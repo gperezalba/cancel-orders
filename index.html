@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <link rel="icon" type="image/png" href="https://www.pimarkets.io/favicon.ico"/>
+    <title>PiMarkets® Cancelar orden</title>
+    <script src="https://cdn.jsdelivr.net/npm/pi-markets@1.0.104/dist/pimarkets.min.js"></script>
+    <script type="text/javascript">
+
+        const walletService = new pimarkets.Wallets('mainnet');
+        const query = new pimarkets.Query('bank', 'mainnet');
+        const queryDEX = new pimarkets.Query('dex', 'mainnet');
+        let WALLET = "";
+        let IDENTITY = "";
+        let SIGNER = {};
+
+        async function init() {
+            SIGNER = createWallet();
+            await getWalletByOwner(SIGNER.address);
+            await printOrders(WALLET);
+        }
+
+        function createWallet() {
+            let mnemonic = document.getElementById("mnemonicInput").value;
+
+            if (!walletService.isValidMnemonic(mnemonic)) {
+                alert("El mnemónico es inválido");
+            }
+
+            let signer =  walletService.createWalletFromMnemonic(mnemonic, pimarkets.Constants.PATH_0);
+            return signer;
+        }
+
+        async function getWalletByOwner(owner) {
+            let customQuery = '{ identities(where: {owner:"' + String(owner).toLowerCase() + '"}) { id wallet { id } } }';
+            query.setCustomQuery(customQuery);
+
+            try {
+                let response = await query.request();
+                
+                if ((response != undefined) && (response.identities.length != 0)) {
+                    WALLET = response.identities[0].wallet.id;
+                    IDENTITY = response.identities[0].id;
+                }
+            } catch (e) {
+                console.log(e)
+                alert("El mnemónico no es dueño de ningún SmartID");
+            }
+        }
+
+        async function printOrders(wallet) {
+            let customQuery = '{ orders(where:{open: true, owner:"' + String(wallet).toLowerCase() + '", sellToken_in:["0xe1f2d5b6d86030660fc2e80965585af3163a1454", "0xa247bfd313d030388f51ca451ba7578f849438d6"], buyToken_in:["0xe1f2d5b6d86030660fc2e80965585af3163a1454", "0xa247bfd313d030388f51ca451ba7578f849438d6"]}) { id } }';
+            queryDEX.setCustomQuery(customQuery);
+
+            try {
+                let response = await queryDEX.request();
+                if ((response != undefined) && (response.orders != [])) {
+                    let orders = response.orders;
+                    if (orders.length == 0) {
+                        document.getElementById("orders").innerHTML = " <br> (No tiene órdenes abiertas en el par BDVE | PEL)";
+                    } else {
+                        document.getElementById("orders").innerHTML = "";
+                    }
+                    orders.forEach(function (order) {
+                        let inp = document.getElementById("orders").innerHTML;
+                        document.getElementById("orders").innerHTML = inp +
+                            "------------------------------------------------------------------------------------" + " <br> " +
+                            "ID: " + order.id + " <br> ";
+                    });
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function cancelOrder() {
+            let smartID = new pimarkets.SmartID(
+                SIGNER,
+                IDENTITY,
+                WALLET,
+                'mainnet'
+            );
+
+            let orderId = document.getElementById("orderId").value;
+
+            try {
+                document.getElementById("wait").innerHTML = "Realizando transacción...";
+                await smartID.cancelOrder(orderId, "30");
+                document.getElementById("wait").innerHTML = "CANCELADA CORRECTAMENTE";
+            } catch(e) {
+                try {
+                    document.getElementById("wait").innerHTML = "Realizando transacción...";
+                    await smartID.cancelOrderPackableDex(orderId, "31");
+                    document.getElementById("wait").innerHTML = "CANCELADA CORRECTAMENTE [Packable]";
+                } catch (e2) {
+                    document.getElementById("wait").innerHTML = "ERROR";
+                }
+            }
+        }
+
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+  </head>
+  <body>
+  <style type='text/css'>
+        body {
+            font-family: 'Open Sans', sans-serif;
+            font-weight: 400;
+            background-color: #072146
+        }
+        
+        h1 {
+            color: white;
+        }
+
+        h2 {
+            color: white;
+        }
+
+        h3 {
+            color: white;
+        }
+
+        h4 {
+            color: white;
+        }
+
+        h5 {
+            color: white;
+        }
+
+        .mySelector {
+            font-family: 'Open Sans', sans-serif;
+            font-weight: 400;
+            width: 150px;
+            font-size: 16px;
+            text-align-last:center;
+        }
+
+        .myCheckbox {
+            font-color: white;
+            background-color: green;
+        }
+
+        label {
+            color:white;
+            font-family: 'Open Sans', sans-serif;
+        }
+
+        .myButton {
+            background-color:#0a93eb;
+            border-radius:6px;
+            cursor:pointer;
+            color:white;
+            font-family:Arial;
+            font-size:15px;
+            font-weight:normal;
+            padding:6px 24px;
+        }
+
+        .center {
+            margin: auto;
+            padding: 10px;
+            text-align: center;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+
+    <div class="center">
+        <br>
+        <br>
+        <img src="https://pimarkets.io/assets/img/logo-positive.png" width="250" height="50">
+        <h4>- Cancelar órdenes erróneas BDVE | PEL -</h4>
+        <br>
+        <br>
+        <input id="mnemonicInput" size="150" placeholder="Insertar las 12 palabras del mnemónico (todas en minúscula y separadas por un espacio)" style="text-align:center; font-size:15px; border-radius: 6px; height:25px"></input>
+        <br>
+        <br>
+        <button class="myButton" onclick="init();">Cargar órdenes</button>
+        <br>
+        <div style="color: white;" id="orders"></div>
+        <br>
+        <br>
+        <input id="orderId" size="150" placeholder="Insertar el ID de la orden a cancelar (0x...)" style="text-align:center; font-size:15px; border-radius: 6px; height:25px"></input>
+        <br>
+        <br>
+        <button class="myButton" onclick="cancelOrder();">Cancelar orden</button>
+        <br>
+        <br>
+        <div style="color: white;" id="wait"></div>
+    </div>
+  </body>
+</html>
